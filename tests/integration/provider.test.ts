@@ -24,6 +24,13 @@ describe("Provider", () => {
         await tx.wait();
     });
 
+    describe("#getMainContractAddress()", () => {
+        it("should return the address of main contract", async () => {
+            const result = await provider.getMainContractAddress();
+            expect(result).not.to.be.null;
+        });
+    });
+
     describe("#getBridgehubContractAddress()", () => {
         it("should return the address of main contract", async () => {
             const result = await provider.getBridgehubContractAddress();
