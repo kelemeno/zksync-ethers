@@ -280,6 +280,7 @@ describe("Wallet", () => {
                 to: await wallet.getAddress(),
                 amount: amount,
                 refundRecipient: await wallet.getAddress(),
+                approveBaseERC20: true,
             });
             const result = await tx.wait();
             const l2BalanceAfterDeposit = await wallet.getBalance();
@@ -299,6 +300,7 @@ describe("Wallet", () => {
                 to: await wallet.getAddress(),
                 amount: amount,
                 approveERC20: true,
+                approveBaseERC20: true,
                 refundRecipient: await wallet.getAddress(),
             });
             const result = await tx.wait();
