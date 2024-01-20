@@ -118,7 +118,7 @@ function AdapterL1(Base) {
         async deposit(transaction) {
             var _a, _b, _c, _d, _e, _f, _g;
             var _h, _j;
-            const depositTx = await this.getDepositTx(transaction);
+            const { tx: depositTx, mintValue: mintValue } = await this.getDepositTx(transaction);
             const bridgehub = await this.getBridgehubContract();
             const chainId = (await this._providerL2().getNetwork()).chainId;
             const baseTokenAddress = await bridgehub.baseToken(chainId);
@@ -166,7 +166,6 @@ function AdapterL1(Base) {
                 // Use requestL2TransactionTwoBridges, secondBridge is the wETH bridge.
                 // Give approval for the base token, and transfer ether value to the wethBridge (and not weth).
                 // kl todo the numbers are of for this method because we started using struct. Find the values.
-                const mintValue = parseInt(depositTx.data.slice(2 + 8 + 3 * 64, 2 + 8 + 4 * 64), 16);
                 // we are depositing eth into a non-eth based chain. We go through the weth bridge. 
                 if (transaction.approveBaseERC20) {
                     // We only request the allowance if the current one is not enough.
@@ -206,7 +205,7 @@ function AdapterL1(Base) {
             }
             else {
                 // kl todo the numbers are of for this method because we started using struct. Find the values.
-                const mintValue = parseInt(depositTx.data.slice(2 + 8 + 3 * 64, 2 + 8 + 4 * 64), 16);
+                // const mintValue = parseInt(depositTx.data.slice(2+8+3*64, 2+8+4*64), 16);
                 // we are depositing a non-eth and non-base token to a non-eth based chain. We go through the bridgehub, and give approval for both tokens
                 if (transaction.approveBaseERC20) {
                     // We only request the allowance if the current one is not enough.
@@ -292,16 +291,17 @@ function AdapterL1(Base) {
                 // Depositing ETH to an ETH based chain.
                 // Call the BridgeHub directly, like it's done with the DiamondProxy.
                 (_h = overrides.value) !== null && _h !== void 0 ? _h : (overrides.value = baseCost.add(operatorTip).add(amount));
-                return {
-                    contractAddress: to,
-                    calldata: "0x",
-                    mintValue: overrides.value,
-                    l2Value: amount,
-                    // For some reason typescript can not deduce that we've already set the
-                    // tx.l2GasLimit
-                    l2GasLimit: tx.l2GasLimit,
-                    ...tx,
-                };
+                return { tx: {
+                        contractAddress: to,
+                        calldata: "0x",
+                        mintValue: overrides.value,
+                        l2Value: amount,
+                        // For some reason typescript can not deduce that we've already set the
+                        // tx.l2GasLimit
+                        l2GasLimit: tx.l2GasLimit,
+                        ...tx,
+                    },
+                    mintValue: overrides.value };
             }
             else if (baseTokenAddress == utils_1.ETH_ADDRESS_IN_CONTRACTS) {
                 // Depositing token to an ETH based chain.
@@ -328,7 +328,7 @@ function AdapterL1(Base) {
                 const bridge = l2WethToken != ethers_1.ethers.constants.AddressZero
                     ? bridgeContracts.weth
                     : bridgeContracts.erc20;
-                return await bridge.populateTransaction.deposit(...args, overrides);
+                return { tx: await bridge.populateTransaction.deposit(...args, overrides), mintValue: overrides.value };
             }
             else if (token == utils_1.ETH_ADDRESS) {
                 // Depositing ETH into a non-ETH based chain.
@@ -337,7 +337,7 @@ function AdapterL1(Base) {
                 (_l = overrides.value) !== null && _l !== void 0 ? _l : (overrides.value = amount);
                 const mintValue = baseCost.add(operatorTip); // of the base token, not eth
                 await (0, utils_1.checkBaseCost)(baseCost, mintValue);
-                const secondBridgeCalldata = ethers_1.ethers.utils.defaultAbiCoder.encode(["address", "uint256", "address"], [utils_1.ETH_ADDRESS_IN_CONTRACTS, amount, to]);
+                const secondBridgeCalldata = ethers_1.ethers.utils.defaultAbiCoder.encode(["address", "uint256", "address"], [utils_1.ETH_ADDRESS_IN_CONTRACTS, 0, to]);
                 const wethBridgeAddress = await bridgeContracts.weth.address;
                 const refundRecipient = (_m = tx.refundRecipient) !== null && _m !== void 0 ? _m : ethers_1.ethers.constants.AddressZero;
                 const args = {
@@ -351,23 +351,24 @@ function AdapterL1(Base) {
                     secondBridgeValue: amount,
                     secondBridgeCalldata,
                 };
-                return await bridgehub.populateTransaction.requestL2TransactionTwoBridges(args, overrides);
+                return { tx: await bridgehub.populateTransaction.requestL2TransactionTwoBridges(args, overrides), mintValue: mintValue };
             }
             else if (token == baseTokenAddress) {
                 (_o = overrides.value) !== null && _o !== void 0 ? _o : (overrides.value = 0);
                 // Depositing the base token to a non-eth based chain.
                 // Goes through the BridgeHub.
                 // Have to give approvals for the baseTokenBridge.
-                return {
-                    contractAddress: to,
-                    calldata: "0x",
-                    mintValue: baseCost.add(operatorTip).add(amount),
-                    l2Value: amount,
-                    // For some reason typescript can not deduce that we've already set the
-                    // tx.l2GasLimit
-                    l2GasLimit: tx.l2GasLimit,
-                    ...tx,
-                };
+                return { tx: {
+                        contractAddress: to,
+                        calldata: "0x",
+                        mintValue: baseCost.add(operatorTip).add(amount),
+                        l2Value: amount,
+                        // For some reason typescript can not deduce that we've already set the
+                        // tx.l2GasLimit
+                        l2GasLimit: tx.l2GasLimit,
+                        ...tx,
+                    },
+                    mintValue: baseCost.add(operatorTip).add(amount) };
             }
             else {
                 // Depositing non-ETH and not the base token to a non-ETH based chain.
@@ -389,7 +390,7 @@ function AdapterL1(Base) {
                     secondBridgeValue: 0,
                     secondBridgeCalldata,
                 };
-                return await bridgehub.populateTransaction.requestL2TransactionTwoBridges(args, overrides);
+                return { tx: await bridgehub.populateTransaction.requestL2TransactionTwoBridges(args, overrides), mintValue: mintValue };
             }
         }
         // Retrieves the full needed ETH fee for the deposit.
