@@ -486,32 +486,39 @@ export function AdapterL1<TBase extends Constructor<TxSender>>(Base: TBase) {
             } else if (baseTokenAddress == ETH_ADDRESS_IN_CONTRACTS) {
                 // Depositing token to an ETH based chain.
                 // Use the ERC20 bridge as done before.
-                overrides.value ??= baseCost.add(operatorTip);
-                await checkBaseCost(baseCost, overrides.value);
+                overrides.value = baseCost.add(operatorTip);
+                const mintValue = 0;
 
-                const refundRecipient = tx.refundRecipient ?? ethers.constants.AddressZero;
-                const args: [BigNumberish, Address, Address, BigNumberish, BigNumberish, BigNumberish, BigNumberish, Address] = [
-                    (await this._providerL2().getNetwork()).chainId,
-                    to,
-                    token,
-                    BigNumber.from(0),
-                    amount,
-                    tx.l2GasLimit,
-                    tx.gasPerPubdataByte,
-                    refundRecipient,
-                ];
+                await checkBaseCost(baseCost, mintValue);
+                const secondBridgeCalldata = ethers.utils.defaultAbiCoder.encode(
+                    ["address", "uint256", "address"],
+                    [ETH_ADDRESS_IN_CONTRACTS, 0, to]
+                );
 
-                // Check whether wETH is being deposited.
                 let l2WethToken = ethers.constants.AddressZero;
                 try {
                     l2WethToken = await bridgeContracts.weth.l2TokenAddress(tx.token);
-                } catch (e) {}
+                } catch (e) { }
 
                 const bridge =
                     l2WethToken != ethers.constants.AddressZero
                         ? bridgeContracts.weth
                         : bridgeContracts.erc20;
-                return {tx: await bridge.populateTransaction.deposit(...args, overrides), mintValue: overrides.value};
+
+                const refundRecipient = tx.refundRecipient ?? ethers.constants.AddressZero;
+                const args: { chainId: BigNumberish; mintValue: BigNumberish; l2Value: BigNumberish; l2GasLimit: BigNumberish; l2GasPerPubdataByteLimit: BigNumberish; refundRecipient: string; secondBridgeAddress: string; secondBridgeValue: BigNumberish; secondBridgeCalldata: BytesLike } = {
+                    chainId: (await this._providerL2().getNetwork()).chainId,
+                    mintValue,
+                    l2Value: 0,
+                    l2GasLimit: tx.l2GasLimit,
+                    l2GasPerPubdataByteLimit: tx.gasPerPubdataByte,
+                    refundRecipient,
+                    secondBridgeAddress: bridge.address,
+                    secondBridgeValue: amount,
+                    secondBridgeCalldata,
+                };
+
+                return { tx: await bridgehub.populateTransaction.requestL2TransactionTwoBridges(args, overrides), mintValue: mintValue };
             } else if (token == ETH_ADDRESS) {
                 // Depositing ETH into a non-ETH based chain.
                 // Use requestL2TransactionTwoBridges, secondBridge is the wETH bridge.
@@ -938,7 +945,6 @@ export function AdapterL1<TBase extends Constructor<TxSender>>(Base: TBase) {
             const {
                 contractAddress,
                 payer,
-                mintValue,
                 l2Value,
                 calldata,
                 l2GasLimit,
@@ -960,11 +966,19 @@ export function AdapterL1<TBase extends Constructor<TxSender>>(Base: TBase) {
 
             overrides.value ??= baseCost.add(operatorTip).add(l2Value);
 
+            let mintValue;
+
             await checkBaseCost(baseCost, ethIsBaseToken? overrides.value : mintValue);
+
+            if (ethIsBaseToken) {
+                mintValue = baseCost.add(operatorTip).add(l2Value);
+            } else {
+                mintValue = BigNumber.from(0);
+            }
 
             return await bridgehub.populateTransaction.requestL2Transaction({
                     chainId,
-                    mintValue: mintValue,
+                mintValue: mintValue,
                     l2Contract: contractAddress,
                     l2Value: l2Value,
                     l2Calldata: calldata,
